@@ -3,7 +3,7 @@
 # of measured local environmental conditions in determining mortality.
 # Read metadata (Malua_MetadataDataI.xlsx) file and Hector et al. 2011 for info on data
 # Sean Tuck - PhD student, Department of Plant Sciences, University of Oxford
-# Last updated: 01/03/2012
+# Last updated: 04/03/2012
 ##########
 # Install packages for modelling
 library(lme4)
@@ -165,7 +165,29 @@ spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl), data=MortD
 # Laplacian to Gauss-Hermite Quadrature (greater accuracy) does not solve false convergence. Leads to wild model estimates.
 # Models that include any size covariates (continuous variables) also fail to converge...
 
-finalmod<- spmortmod2 # Minimal adequate model is spmortmod2
+##########
+# Additional thoughts and working on the random effects structure to better represent experimental design
+spmortmod3<- lmer(survival ~ species + (1|foresttype) + (1|pl) + (1|li), data=MortDat, family=binomial, REML=FALSE)
+# Line level included as a separate random effect. Not ideally how we'd want to specify it, as lines are physically
+# nested within plots. Plus, line numbers are replicated among plots (1-20), which means li as currently specified
+# unnested is misleading and incorrect.
+
+# Try creating a plot-line combined factor, giving a unique level for each line.
+MortDat$pl.li<- factor(paste(MortDat$pl,'.',MortDat$li,sep=''))
+spmortmod4<- lmer(survival ~ species + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+# Error. Says lengths of pl and pl.li are not equal. length of pl.li levels / number of li levels in each plot, gives
+# 112 plots. Not 124 plots. What are the missing 12? Comparison with unplanted controls?
+
+# Try individual line levels without being nested in plot, or including plot separately.
+spmortmod5<- lmer(survival ~ species + (1|foresttype) + (1|pl.li), data=MortDat, family=binomial, REML=FALSE)
+AIC(spmortmod2)-AIC(spmortmod5)
+# Massive reduction in AIC, corresponding with substantial increase in variance explained by this li level random 
+# effect, compared with pl level. Clearly best so far, to work at li level, which also makes most sense as the most
+# fundamental level of sampling. But li nested within pl, and even blocks, would be useful, but still not worked yet.
+# All species parameter estimates become highly significant.
+##########
+
+finalmod<- spmortmod5 # Current minimal adequate model is spmortmod5
 # Estimate mortality rates
 fixef(finalmod)
 mortpars<- vector(length=length(fixef(finalmod)))
