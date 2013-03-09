@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .DS_Store
+cache
+MaluaDataI_EDIT.txt
+MaluaData_EDIT.txt
+figure/
+Mortality_GLMM_Workflow.md
+*~

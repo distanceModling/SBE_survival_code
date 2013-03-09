@@ -1,3 +1,14 @@
+<style type="text/css">
+body, td {
+   font-size: 18px;
+   font-family: Arial;
+}
+code.r{
+  font-size: 14px;
+}
+
+</style>
+
 R workflow
 ========================================================
 preliminary exploration and analysis of Borneo survival data
@@ -8,7 +19,7 @@ Workflow notes that distill the main points from accompanying code (Mortality_GL
 Binomial GLMMs will be fitted to data, to estimate mortality of species and assess the relative importance
 of measured local environmental conditions in determining mortality.
 Read metadata (Malua_MetadataDataI.xlsx) file and [Hector *et al.* 2011](http://rstb.royalsocietypublishing.org/content/366/1582/3303.full) for more information on data.  
-##### Last updated 01/03/2013
+##### Last updated 07/03/2013
 ***  
 ### Queries on bugs/fixes: 
 1.  18 unique genus species combinations found (not incl. `Dont plant`). Plots contain max. of 16 species. Unique species found when combining genus and species info that are not included in list on MaluaPlantingDesign.doc, are:  
@@ -114,43 +125,57 @@ The distributions of planting times between species are very similar - data were
 
 ***
 ### Modelling
-`REML=FALSE` used so models can be compared by AIC when appropriate.
-```{r}
-ranefmod<- lmer(survival ~ 1 + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+`REML=FALSE` is used so models can be compared by AIC when appropriate.
+```{r cache=TRUE}
+MortDat$pl.li<- factor(paste(MortDat$pl,'.',MortDat$li,sep=''))
+MortDat$pl<- as.factor(MortDat$pl)
+ranefmod<- lmer(survival ~ 1 + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 summary(ranefmod)
 ```
-Null model - just random effects. Plot level random effect to deal with variation due to unexplained effects at plot level. Random intercept included to account for differences between forest types; if observations of habitat characteristics, such as canopy cover are used in the model as fixed effects, then it would be best to omit this. Likelihood Ratio Test shows inclusion of forest types random effect is a significant improvement.
+Null model - just random effects. The random effects and their structure, are based on grouping factors associated with the experimental design at SBE, and some judgement on possible useful random effects to include. The random effects that capture variance components and the different levels of experimental design (`pl`, `li`, & `bl`) are a must have and should not be removed. The fundamental physical sampling level is at the line level (`li`). Lines are nested within plots (`pl/pl.li`), which are nested within blocks (`bl`). There may also be important unexplained differences between classes of `foresttype` that should be accounted for to hone in on by-species mortality rates, and the effects of components of diversity on these mortality rates.
 
-How are effects of forest characteristics best specified? Do we want to estimate parameters for different forest types? Outputs of representing forest types as a random effect, and representing a characteristic of forest type (canopy cover) as a fixed effect are compared.
-```{r}
-spcnpymod<- lmer(survival ~ canopycover + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spcnpymod2<- lmer(survival ~ canopycover + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+Likelihood Ratio Test shows inclusion of `foresttype` random effect has a significant improvement. A `foresttype` random intercept is therefore included to account for differences between forest types; if observations of habitat characteristics, such as `canopycover` are used in the model as fixed effects, then it may be best to omit this.
+
+Include block level into the random effects structure as well, to see how much variance at the block level? How would this be specified - block/plot/line? Three nested grouping factor possible? Would it be easier/sensible to include block as a fixed effect? Keep just pl/pl.li for now.
+
+As specified above, plot level and line level grouping factors capture a similar amount of variation in the data.
+
+How are effects of forest characteristics best specified? Do we want to estimate parameters for different forest types? Outputs of representing forest types as a random effect, and representing a characteristic of forest type (`canopycover`) as a fixed effect are compared.
+```{r cache=TRUE}
+spcnpymod<- lmer(survival ~ canopycover + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spcnpymod2<- lmer(survival ~ canopycover + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 anova(ranefmod,spcnpymod2)
 AIC(ranefmod)-AIC(spcnpymod)
 ```
-Canopy cover as a fixed effect is significant (although parameter estimate is close to 0), but becomes insignificant with forest type random intercept included. Forest type is capturing that variation attributable to forest types, and AIC comparison shows lower deviance when this variation is represented as a random effect. Specifying this as a random effect makes more sense anyway; estimating parameters for different densities of canopy cover will consider only one of the many ways in which different forest types can vary. The random effects structure will be maintained and canopy cover will be omitted.
+Inclusion of `canopycover` categorical fixed effect is significant and improves AIC, but the coefficient values are rather wild. While they show large effects, when compared to the intercept as treatment constrasts, the effect is not large. Do show some small trend increasing with `canopycover` density however. Even with `foresttype` random effect, `canopycover` is improving the model fit. A problem, however, is correlation values of 1 and -1 between `canopycover` classes. This probably has something to do with the large standard error in parameter estimates, and rubbish p values. So, `canopycover` should not be included in the model, despite showing a better fit to the data and being a significant addition according to a likelihood ratio test. Specifying this as a random effect probably makes more sense anyway; estimating parameters for different densities of canopy cover will consider only one of the many ways in which different forest types can vary.
 
 Does including species as a fixed effect, estimating a parameter for each, provide additional explanatory power?
-```{r}
-spmortmod<- lmer(survival ~ species + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+```{r cache=TRUE}
+spmortmod<- lmer(survival ~ species + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 anova(ranefmod,spmortmod)
 ```
-Again, Likelihood Ratio Test shows that estimating a mortality rate for each species provides significantly more explanatory power than estimating a species-average response, as expected from data exploration. Species categories will be kept in the model.
+Likelihood Ratio Test shows that estimating a mortality rate for each species provides significantly more explanatory power than estimating a species-average response, as expected from data exploration. Species categories will be kept in the model.
 
 Does species-level diversity have a significant effect on mortality? Species diversity classes included as a fixed effect.
-```{r}
-spsdmortmod<- lmer(survival ~ species + sd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+```{r cache=TRUE}
+spsdmortmod<- lmer(survival ~ species + sd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 anova(spmortmod,spsdmortmod)
 ```
 This does not improve the models explanatory power and shows diversity to have no effect on the mortality of a species.
 
 What about other levels of diversity? Does increased diversity at the genus level have a significant effect on mortality? What about varying levels of functional diversity (canopy mixture) nested within generic diversity? Try fitting some kind of interaction between functional diversity and generic diversity? How best to specify this?
-```{r}
-spgdfdmod<- lmer(survival ~ species + gd*fd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spgdmortmod<- lmer(survival ~ species + gd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+```{r cache=TRUE}
+spgdfdmod<- lmer(survival ~ species + gd*fd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spgdmortmod<- lmer(survival ~ species + gd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 ```
 No sign of a significant effect of increasing generic diversity, functional diversity in terms of canopy mixture, or including the interaction between increasing functional diversity as generic diversity increases.
+
+Is it worth including block as a fixed effect? Different response for different blocks?
+```{r cache=TRUE}
+spmortmodbl<- lmer(survival ~ species + bl + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+```
+Seems to be no significant difference in mortality between blocks. A random effects structure with three grouping factors of `bl`, `pl:bl`, and finally `pl.li:(pl:bl)` was also attempted; nesting the other grouping factors within block levels had no effect on variation captured by the random effects.
 
 #### NB:
 Models that include timelag and types of damage are not converging on meaningful values. Changing the approximation technique from Laplacian to Gauss-Hermite Quadrature (greater accuracy) does not solve false convergence. Leads to wild model estimates. Models that include any size covariates (continuous variables) also fail to converge...
@@ -158,10 +183,8 @@ Models that include timelag and types of damage are not converging on meaningful
 ### Minimal adequate model
 ```{r}
 spmortmod
-binnedplot(fitted(spmortmod),resid(spmortmod))
 ```
-Differences in mortality rates between species are highly significant and appear to differ in a manner that I expected, based on observing the raw data.
-Variance is pretty constant: homoscedastic assumption not violated. Plot level random effect `pl` is doing a good job of capturing some variation in the data. Although, `foresttype` random effect is capturing even more. Correlation of fixed effects is pretty low.
+Differences in mortality rates between species are highly significant and appear to differ in a manner that I expected, based on observing the raw data. Correlation of fixed effects is pretty low.
 
 **Estimate species mortality rates:**
 ```{r}
@@ -171,17 +194,16 @@ mortpars[1]<- fixef(spmortmod)[1]
 # Extract par estimates from treatment contrasts
 mortpars[2:length(mortpars)]<- fixef(spmortmod)[2:length(mortpars)]+mortpars[1] 
 # Back-transform logit values on to the original scale
-mortrates<- matrix(c(levels(MortDat$species)[c(1,3:17)], 1/(1+(1/exp(mortpars)))), ncol=2) 
+mortrates<- matrix(c(levels(MortDat$species)[c(1,3:17)], 1/(1+exp(-mortpars))), ncol=2) 
 mortrates
 ```
 Object `mortrates` stores the estimated mortality rates (proportion of survival) for all species.  
 Percentage of survival ranges from 11% to 49% among species.
 ***
-### Possible next steps
-
-Subset data by block. Differences between blocks?
 
 #### Model checking
+Use `binnedplot()` to look at residual diagnostics. Need to work out a way to predict from lmer GLMMs. Apparently examples of methods to do this in Gelman & Hill, which Andy has.
+
 Obtain R^2 from GLMM using [Nakagawa & Schielzeth's (2012)](http://onlinelibrary.wiley.com/doi/10.1111/j.2041-210x.2012.00261.x/abstract?deniedAccessCustomisedMessage=&userIsAuthenticated=false) method.
 
 Use cross-validation to see how well the parameter estimates generalise.

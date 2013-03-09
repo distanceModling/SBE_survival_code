@@ -2,8 +2,9 @@
 # Binomial GLMMs will be fitted to data, to estimate mortality of species and assess the relative importance
 # of measured local environmental conditions in determining mortality.
 # Read metadata (Malua_MetadataDataI.xlsx) file and Hector et al. 2011 for info on data
-# Sean Tuck - PhD student, Department of Plant Sciences, University of Oxford
-# Last updated: 04/03/2012
+#
+# Sean Tuck - PhD student, University of Oxford
+# Last updated: 07/03/2012
 ##########
 # Install packages for modelling
 library(lme4)
@@ -125,40 +126,68 @@ tapply(MortDat$plantdatenum,MortDat$species, summary)
 #########################
 # Modelling
 # REML=FALSE used so models can be compared by AIC when appropriate.
-ranefmod<- lmer(survival ~ 1 + (1|pl), data=MortDat, family=binomial, REML=FALSE) # Null model - just random effects.
-ranefmod2<- lmer(survival ~ 1 + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+
+# Null model - just random effects. Random effects specification, before adding fixed effects.
+ranefmodpl<- lmer(survival ~ 1 + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+# It is important to include line level as a random effect as this is the funademental physical level of the experimental design.
+# Line IDs are replicated within plots, however, so a plot.line ID needs to be created to incorporate line level in a relevant way.
+MortDat$pl.li<- factor(paste(MortDat$pl,'.',MortDat$li,sep=''))
+ranefmodli<- lmer(survival ~ 1 + (1|pl.li), data=MortDat, family=binomial, REML=FALSE)
+AIC(ranefmodli)-AIC(ranefmodpl)
+# Line level a much better fit.
+# Line level included as a separate random effect. Not ideally how we'd want to specify it, as lines are physically
+# nested within plots, nested within blocks.
+# Need plot level as factor class for line nested within plot to work.
+MortDat$pl<- as.factor(MortDat$pl)
+ranefmodplli<- lmer(survival ~ 1 + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+# Include block level into the random effects structure as well, to see how much variance at the block level? How would this be
+# specified - block/plot/line? Three nested grouping factor possible? Would it be easier/sensible to include block as a fixed effect?
+# Keep just pl/pl.li for now.
+# As specified by ranefmodplli, plot level and line level grouping factors capture a similar amount of variation in the data.
+
+ranefmod2<- lmer(survival ~ 1 + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 anova(ranefmod,ranefmod2)
 # Random intercept for forest types explains a lot of variation in the data and dramatically reduces deviance. Keep in model to focus
-# on differences between species and effects of diversity on mortality rates. Not enough by-sp data at line level for li random effect.
+# on differences between species and effects of diversity on mortality rates.
 ##########
 
-spmortmod<- lmer(survival ~ species + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spmortmod2<- lmer(survival ~ species + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-anova(ranefmod2,spmortmod2)
-# Likelihood Ratio Test shows inclusion of genusspecies fixed effect is justified. Species with most positive coefficients
+# Is foresttype random effect necessary, or is an appropriate fixed effect capturing similar information useful? Compare effects of
+# canopycover fixed effect and foresttype random effect.
+MortDat$canopycover<- as.factor(MortDat$canopycover)
+spcnpymod<- lmer(survival ~ canopycover + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spcnpymod2<- lmer(survival ~ canopycover + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+anova(ranefmodplli,spcnpymod)
+anova(ranefmod2,spcnpymod2)
+# Inclusion of canopycover categorical fixed effect is significant and improves AIC, but the coefficient values are rather wild.
+# While they show large effects, when compared to the intercept as treatment constrasts, the effect is not large. Do show some small
+# trend increasing with canopycover density however. Even with foresttype random effect, canopycover is improving the model fit.
+# A problem, however, is correlation values of 1 and -1 between canopycover classes. This probably has something to do with the
+# large standard error in parameter estimates, and rubbish p values. So, canopycover should not be included in the model, despite
+# showing a better fit to the data and being a significant addition according to a likelihood ratio test.
+##########
+
+spmortmod<- lmer(survival ~ species + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+anova(ranefmod2,spmortmod)
+# Likelihood Ratio Test shows inclusion of species fixed effect is justified. Species with most positive coefficients
 # corroborates thoughts after data exploration on which species had highest proportion of survival. Likewise for those
 # with lowest proportion of survival. Species coefficients within genera are not similar relative to among genera, so
 # I think keeping data at resolution of species level is informative (want to estimate species mortality rates anyway).
 ##########
 
-spcnpymod<- lmer(survival ~ species + canopycover + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spcnpymod2<- lmer(survival ~ species + canopycover + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-anova(spmortmod,spcnpymod)
-# Inclusion of canopycover categorical fixed effect is significant and improves AIC, but the coefficient value is close to 0. 
-# Increasing density of canopy cover has a positive effect, but probably negligible such that it has little meaning. Therefore, 
-# canopycover is not retained in the model. Also, incusion of foresttype explains away these differences inherent in different 
-# habitat types and canopycover becomes insignificant. 
-##########
-
-spsdmortmod<- lmer(survival ~ species + sd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+spsdmortmod<- lmer(survival ~ species + sd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 anova(spmortmod2,spsdmortmod)
 # Species diversity classes included as a fixed effect to see if increasing diversity significantly effects mortality.
 # This does not improve the models explanatory power and shows diversity to have no effect on the mortality of a species.
-spgdfdmod<- lmer(survival ~ species + gd*fd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spgdmortmod<- lmer(survival ~ species + gd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
-spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl), data=MortDat, family=binomial, REML=FALSE)
+spgdfdmod<- lmer(survival ~ species + gd*fd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spgdmortmod<- lmer(survival ~ species + gd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
 # No sign of significant effect of increasing generic diversity, functional diversity in terms of canopy mixture, or including the
 # interaction between increasing functional diversity as generic diversity increases.
+##########
+
+# Include block as a fixed effect. Different response for different blocks?
+spmortmodbl<- lmer(survival ~ species + bl + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
+
 ##########
 
 # Models that include timelag and types of damage are not converging on meaningful values. Changing the approximation technique from
@@ -166,44 +195,23 @@ spfdmortmod<- lmer(survival ~ species + fd + (1|foresttype) + (1|pl), data=MortD
 # Models that include any size covariates (continuous variables) also fail to converge...
 
 ##########
-# Additional thoughts and working on the random effects structure to better represent experimental design
-spmortmod3<- lmer(survival ~ species + (1|foresttype) + (1|pl) + (1|li), data=MortDat, family=binomial, REML=FALSE)
-# Line level included as a separate random effect. Not ideally how we'd want to specify it, as lines are physically
-# nested within plots. Plus, line numbers are replicated among plots (1-20), which means li as currently specified
-# unnested is misleading and incorrect.
 
-# Try creating a plot-line combined factor, giving a unique level for each line.
-MortDat$pl.li<- factor(paste(MortDat$pl,'.',MortDat$li,sep=''))
-spmortmod4<- lmer(survival ~ species + (1|foresttype) + (1|pl/pl.li), data=MortDat, family=binomial, REML=FALSE)
-# Error. Says lengths of pl and pl.li are not equal. length of pl.li levels / number of li levels in each plot, gives
-# 112 plots. Not 124 plots. What are the missing 12? Comparison with unplanted controls?
-
-# Try individual line levels without being nested in plot, or including plot separately.
-spmortmod5<- lmer(survival ~ species + (1|foresttype) + (1|pl.li), data=MortDat, family=binomial, REML=FALSE)
-AIC(spmortmod2)-AIC(spmortmod5)
-# Massive reduction in AIC, corresponding with substantial increase in variance explained by this li level random 
-# effect, compared with pl level. Clearly best so far, to work at li level, which also makes most sense as the most
-# fundamental level of sampling. But li nested within pl, and even blocks, would be useful, but still not worked yet.
-# All species parameter estimates become highly significant.
-##########
-
-finalmod<- spmortmod5 # Current minimal adequate model is spmortmod5
+finalmod<- spmortmod # Current minimal adequate model is spmortmod
 # Estimate mortality rates
 fixef(finalmod)
 mortpars<- vector(length=length(fixef(finalmod)))
 mortpars[1]<- fixef(finalmod)[1]
 mortpars[2:length(mortpars)]<- fixef(finalmod)[2:length(mortpars)]+mortpars[1] # Extract par estimates from treatment contrasts
-mortrates<- matrix(c(levels(MortDat$species)[c(1,3:17)], 1/(1+(1/exp(mortpars)))), ncol=2) 
+mortrates<- matrix(c(levels(MortDat$species)[c(1,3:17)], 1/(1+exp(-mortpars))), ncol=2) 
 # Back-transform logit values on to the original scale
 # Object 'mortrates' stores the estimated mortality rates (percentage of survival) for all species.
 # Proportion of survival ranges from 11% to 49% among species.
-##########
-
-# Subset data by block. Differences between blocks?
 
 ##########
 # Model checking
 
+# Use `binnedplot()` to look at residual diagnostics. Need to work out a way to predict from lmer GLMMs. Apparently examples 
+# of methods to do this in Gelman & Hill, which Andy has.
 # Use Nakagawa & Schielzeth's (2012) method to obtain Rsq value for models.
 # Use cross-validation to see how well the par estimates generalise.
 # Fit model to set of data randomly drawn from binomial distribution, instead of survival data, to make sure the
